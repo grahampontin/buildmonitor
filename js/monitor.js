@@ -36,10 +36,9 @@ function renderBuilds(builds) {
     }).done(function (data) {
         $.each(data.build, function(i, build) {
             var buildConfigurationDiv = $("#buildConfiguration_"+build.buildTypeId+"_branch_"+build.branchName);
+            //TODO: based on the status of the last N builds do something to the widget. Like make it red for failed, with number of tests etc.
+            //errr, just make it success for now.
             buildConfigurationDiv.addClass('bg-success');
-            // var buildDiv = $("<div class='build' id='"+build.id+"'></div>");
-            // buildDiv.text(build.number);
-            // buildConfigurationDiv.append(buildDiv)
         })
     })
 
