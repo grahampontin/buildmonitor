@@ -4,13 +4,17 @@ var branchDivs = [];
 var branchIds = [];
 
 
+function getSafeBranchName(branchId) {
+    return branchId.replace("<", "").replace(">", "").replace(/\//g, "_");
+}
+
 //locator=policy:ACTIVE_VCS_BRANCHES
 function initializeAllBranches() {
     $.getJSON(teamCityBaseUrl + "/app/rest/projects/" + baseProjectName + "/branches?locator=policy:ACTIVE_VCS_BRANCHES&guest=1", function (data) {
 
     }).done(function (data) {
         $.each(data.branch, function (i, branch) {
-            var safeBranchName = branch.name.replace("<", "").replace(">", "");
+            var safeBranchName = getSafeBranchName(branch.name);
             var branchDiv = $("<div class='card panel panel-default mb-3' id='branch_" + safeBranchName + "'></div>");
             var header = $("<div class='panel-leftheading'><h3 class='panel-lefttitle'>" + safeBranchName + "</h3></div>");
             var body = $("<div class='panel-rightbody card-body'></div>");
@@ -31,11 +35,34 @@ $("document").ready(function () {
 
 });
 
-function fetchBuidStatus(buildConfigurationDiv, branchName, buildTypeId) {
+function markAsLoading(buildConfigurationDiv) {
     buildConfigurationDiv.removeClass("bg-danger");
     buildConfigurationDiv.removeClass("bg-success");
     buildConfigurationDiv.addClass("bg-secondary");
-    $.getJSON(teamCityBaseUrl + "/app/rest/builds/?locator=branch:" + branchName + ",buildType:" + buildTypeId + ",count:3&guest=1", function (data) {
+}
+
+function markSuccess(buildConfigurationDiv) {
+    buildConfigurationDiv.removeClass("bg-secondary");
+    buildConfigurationDiv.addClass("bg-success");
+}
+
+function markFailure(buildConfigurationDiv, build) {
+    $.getJSON(teamCityBaseUrl + build.href + "?guest=1", function (data) {
+        var t = data;
+    }).done(function (data) {
+        if (data.testOccurrences !== undefined){
+            buildConfigurationDiv.find(".testCount").text(data.testOccurrences.failed);
+        } else {
+            buildConfigurationDiv.find(".testCount").text(data.statusText);
+        }
+        buildConfigurationDiv.addClass("bg-danger text-white");
+    }).fail(function(data) { alert('getJSON request failed! '); });
+
+}
+
+function fetchBuidStatus(buildConfigurationDiv, branchName, buildTypeId) {
+    markAsLoading(buildConfigurationDiv);
+    $.getJSON(teamCityBaseUrl + "/app/rest/builds/?locator=branch:" + encodeURI(branchName) + ",buildType:" + buildTypeId + ",count:1&guest=1", function (data) {
 
     }).done(function (data) {
         //TODO: Show all the things on the builds we want to see.
@@ -43,12 +70,12 @@ function fetchBuidStatus(buildConfigurationDiv, branchName, buildTypeId) {
         //How many tests passed / failed
         //etc
         $.each(data.build, function (i, build) {
-            buildConfigurationDiv.removeClass("bg-secondary");
             var foo = data;
             if (build.status === "SUCCESS") {
-                buildConfigurationDiv.addClass("bg-success");
+                markSuccess(buildConfigurationDiv);
             } else {
-                buildConfigurationDiv.addClass("bg-danger");
+                markFailure(buildConfigurationDiv, build);
+
             }
 
         })
@@ -64,7 +91,7 @@ function registerBuildUpdateCallback(buildConfigurationDiv, buildTypeId, branchN
 
 function renderBuilds(buildTypeId) {
     $.each(branchIds, function (i, branchId) {
-        var buildConfigurationDiv = $("#buildConfiguration_" + buildTypeId + "_branch_" + branchId);
+        var buildConfigurationDiv = $("#buildConfiguration_" + buildTypeId + "_branch_" + getSafeBranchName(branchId));
         fetchBuidStatus(buildConfigurationDiv, branchId, buildTypeId);
         registerBuildUpdateCallback(buildConfigurationDiv, buildTypeId, branchId, 60000);
     })
@@ -73,7 +100,7 @@ function renderBuilds(buildTypeId) {
 function createBuildConfigurationWidgets(buildTypes, projectId) {
     $.each(buildTypes, function (i, buildConfiguration) {
         $.each(branchDivs, function (i, branchDiv) {
-            var buildConfigurationDiv = $("<div class='buildConfiguration card' id='buildConfiguration_" + buildConfiguration.id + "_" + branchDiv[0].parentNode.id + "'>" + buildConfiguration.name + "</div>");
+            var buildConfigurationDiv = $("<div class='buildConfiguration card' id='buildConfiguration_" + buildConfiguration.id + "_" + branchDiv[0].parentNode.id + "'><div class='card-header'>" + buildConfiguration.name + "</div><div class='card-body testCount'></div></div>");
             var projectDivInBranch = $("#project_" + projectId + "_" + branchDiv[0].parentNode.id);
 
             projectDivInBranch.find('.card-columns').first().append(buildConfigurationDiv);
