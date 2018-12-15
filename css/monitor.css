@@ -91,3 +91,8 @@
 {
     column-count: 7;
 }
+
+.testCount {
+    text-align: center;
+    font-size: xx-large;
+}

@@ -1,5 +1,5 @@
 var teamCityBaseUrl = "https://cors-anywhere.herokuapp.com/http://teamcity.jetbrains.com";
-var baseProjectName = "OpenSourceProjects_EclipseCollections";
+var baseProjectName = "ApacheIvy";
 var branchDivs = [];
 var branchIds = [];
 
@@ -35,34 +35,76 @@ $("document").ready(function () {
 
 });
 
-function markAsLoading(buildConfigurationDiv) {
+function resetStyle(buildConfigurationDiv) {
     buildConfigurationDiv.removeClass("bg-danger");
+    buildConfigurationDiv.removeClass("border-danger");
+    buildConfigurationDiv.removeClass("text-danger");
     buildConfigurationDiv.removeClass("bg-success");
-    buildConfigurationDiv.addClass("bg-secondary");
+    buildConfigurationDiv.removeClass("text-white");
+    buildConfigurationDiv.removeClass("border-success");
+    buildConfigurationDiv.removeClass("text-success");
 }
 
-function markSuccess(buildConfigurationDiv) {
-    buildConfigurationDiv.removeClass("bg-secondary");
-    buildConfigurationDiv.addClass("bg-success");
+function markSuccess(buildConfigurationDiv, isRunning) {
+    resetStyle(buildConfigurationDiv);
+    if (isRunning){
+        buildConfigurationDiv.addClass("border-success");
+        buildConfigurationDiv.addClass("text-success");
+    } else {
+        buildConfigurationDiv.addClass("bg-success");
+        buildConfigurationDiv.addClass("text-white");
+    }
+    var progress = buildConfigurationDiv.find(".progress-bar");
+    progress.removeClass("bg-danger");
+    progress.addClass("bg-success");
 }
 
-function markFailure(buildConfigurationDiv, build) {
+function markFailure(buildConfigurationDiv, build, isRunning) {
     $.getJSON(teamCityBaseUrl + build.href + "?guest=1", function (data) {
         var t = data;
     }).done(function (data) {
+        var body = buildConfigurationDiv.find(".card-body");
         if (data.testOccurrences !== undefined){
-            buildConfigurationDiv.find(".testCount").text(data.testOccurrences.failed);
+            body.text(data.testOccurrences.failed);
+            body.addClass("testCount");
         } else {
-            buildConfigurationDiv.find(".testCount").text(data.statusText);
+            body.removeClass("testCount");
+            body.text(data.statusText);
         }
-        buildConfigurationDiv.addClass("bg-danger text-white");
+        resetStyle(buildConfigurationDiv);
+        if (isRunning){
+            buildConfigurationDiv.addClass("border-danger");
+            buildConfigurationDiv.addClass("text-danger");
+        } else {
+            buildConfigurationDiv.addClass("bg-danger");
+            buildConfigurationDiv.addClass("text-white");
+        }
+        var progress = buildConfigurationDiv.find(".progress-bar");
+        progress.addClass("bg-danger");
+        progress.removeClass("bg-success");
     }).fail(function(data) { alert('getJSON request failed! '); });
 
 }
 
+function hideProgress(buildConfigurationDiv) {
+    buildConfigurationDiv.find(".progress").hide();
+}
+
+function showProgress(buildConfigurationDiv, percentageComplete) {
+
+    var progressContainer = buildConfigurationDiv.find(".progress");
+    var progressBar = progressContainer.find(".progress-bar");
+    progressBar.attr("aria-valuenow",percentageComplete);
+    progressBar.attr("style", "width: " + percentageComplete + "%");
+    progressContainer.show();
+}
+
 function fetchBuidStatus(buildConfigurationDiv, branchName, buildTypeId) {
-    markAsLoading(buildConfigurationDiv);
-    $.getJSON(teamCityBaseUrl + "/app/rest/builds/?locator=branch:" + encodeURI(branchName) + ",buildType:" + buildTypeId + ",count:1&guest=1", function (data) {
+    var branch = encodeURI(branchName);
+    if (branchName === "<default>"){
+        branch = "default:true"
+    }
+    $.getJSON(teamCityBaseUrl + "/app/rest/builds/?locator=branch:" + branch + ",buildType:" + buildTypeId + ",running:any,count:1&guest=1", function (data) {
 
     }).done(function (data) {
         //TODO: Show all the things on the builds we want to see.
@@ -70,14 +112,18 @@ function fetchBuidStatus(buildConfigurationDiv, branchName, buildTypeId) {
         //How many tests passed / failed
         //etc
         $.each(data.build, function (i, build) {
-            var foo = data;
+            var isRunning = build.state === "running";
             if (build.status === "SUCCESS") {
-                markSuccess(buildConfigurationDiv);
+                markSuccess(buildConfigurationDiv, isRunning);
+            } else if (build.status === "FAILURE") {
+                markFailure(buildConfigurationDiv, build, isRunning);
+            }
+            if (isRunning){
+                showProgress(buildConfigurationDiv, build.percentageComplete);
             } else {
-                markFailure(buildConfigurationDiv, build);
+                hideProgress(buildConfigurationDiv);
 
             }
-
         })
     })
 }
@@ -93,14 +139,20 @@ function renderBuilds(buildTypeId) {
     $.each(branchIds, function (i, branchId) {
         var buildConfigurationDiv = $("#buildConfiguration_" + buildTypeId + "_branch_" + getSafeBranchName(branchId));
         fetchBuidStatus(buildConfigurationDiv, branchId, buildTypeId);
-        registerBuildUpdateCallback(buildConfigurationDiv, buildTypeId, branchId, 60000);
+        registerBuildUpdateCallback(buildConfigurationDiv, buildTypeId, branchId, 10000);
     })
 }
 
 function createBuildConfigurationWidgets(buildTypes, projectId) {
     $.each(buildTypes, function (i, buildConfiguration) {
         $.each(branchDivs, function (i, branchDiv) {
-            var buildConfigurationDiv = $("<div class='buildConfiguration card' id='buildConfiguration_" + buildConfiguration.id + "_" + branchDiv[0].parentNode.id + "'><div class='card-header'>" + buildConfiguration.name + "</div><div class='card-body testCount'></div></div>");
+            var buildConfigurationDiv = $("<div class='buildConfiguration card' id='buildConfiguration_" + buildConfiguration.id + "_" + branchDiv[0].parentNode.id + "'><div class='card-header'>" + buildConfiguration.name + "</div>" +
+                "<div class='card-body testCount'>" +
+                "   <div class=\"progress\">\n" +
+                "       <div class='progress-bar' role='progressbar' aria-valuemin='0' aria-valuemax='100'></div>" +
+                "    </div>" +
+                "</div>" +
+                "</div>");
             var projectDivInBranch = $("#project_" + projectId + "_" + branchDiv[0].parentNode.id);
 
             projectDivInBranch.find('.card-columns').first().append(buildConfigurationDiv);
